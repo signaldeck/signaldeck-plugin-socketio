@@ -1,0 +1,51 @@
+{
+  "cors_allowed_origins": "*",
+  "ping_interval": 25,
+  "ping_timeout": 20,
+  "max_http_buffer_size": 1000000,
+  "rooms": [
+    {
+      "name": "family",
+      "display_name": "Familie",
+      "persist": true
+    },
+    {
+      "name": "private",
+      "display_name": "Privat",
+      "persist": false
+    }
+  ],
+  "export": {
+    "values": [
+      {
+        "socketio.connected_clients": "connected_clients"
+      },
+      {
+        "socketio.users": "users"
+      },
+      {
+        "socketio.rooms": "rooms"
+      },
+      {
+        "socketio.room_overview": "room_overview"
+      }
+    ],
+    "methods": [
+      {
+        "name": "socketio.clients_for_room",
+        "target_function": "get_clients_for_room"
+      },
+      {
+        "name": "socketio.room_settings",
+        "target_function": "get_room_settings"
+      }
+    ]
+  },
+  "persist": [
+    {
+      "type": "sqlite_socketio"
+    }
+  ],
+  "server_sender_id": "signaldeck",
+  "server_sender_name": "SignalDeck"
+}

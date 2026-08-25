@@ -1,0 +1,29 @@
+[
+  {
+    "name": "Socket.IO Übersicht",
+    "element": "Socket.IO Übersicht",
+    "type": "socketio",
+    "fa": "fas fa-network-wired",
+    "value": [
+      "overview"
+    ]
+  },
+  {
+    "name": "Room Familie",
+    "element": "Room Familie",
+    "type": "socketio",
+    "fa": "fas fa-users",
+    "value": [
+      "family"
+    ]
+  },
+  {
+    "name": "Nicht konfigurierter Room",
+    "element": "Nicht konfigurierter Room",
+    "type": "socketio",
+    "fa": "fas fa-comments",
+    "value": [
+      "runtime-only-room"
+    ]
+  }
+]

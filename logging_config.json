@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "disable_existing_loggers": false,
+  "formatters": {
+    "simple": {
+      "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    }
+  },
+  "handlers": {
+    "console_handler": {
+      "class": "logging.StreamHandler",
+      "level": "DEBUG",
+      "formatter": "simple"
+    }
+  },
+  "loggers": {
+    "": {
+      "level": "INFO"
+    },
+    "signaldeck_plugin_socketio": {
+      "level": "DEBUG"
+    }
+  },
+  "root": {
+    "level": "INFO",
+    "handlers": [
+      "console_handler"
+    ]
+  }
+}

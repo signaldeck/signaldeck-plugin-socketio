@@ -1,0 +1,48 @@
+{% from "ui/_utils.html" import renderButton, renderStateDiv, renderInputField %}
+
+<div class="state-container">
+    {{ renderStateDiv(displayData) }}
+
+    <div class="state-row">
+        <div class="state-label">{{ t("signaldeck_plugin_socketio.room") }}</div>
+        <div class="state-value">{{ displayData.room.display_name }}</div>
+    </div>
+
+    <div class="state-row">
+        <div class="state-label">{{ t("signaldeck_plugin_socketio.configured") }}</div>
+        <div class="state-value">
+            {{ t("signaldeck_plugin_socketio.yes") if displayData.room.configured else t("signaldeck_plugin_socketio.no") }}
+        </div>
+    </div>
+
+    <div class="state-row">
+        <div class="state-label">{{ t("signaldeck_plugin_socketio.persist") }}</div>
+        <div class="state-value">
+            {{ t("signaldeck_plugin_socketio.yes") if displayData.room.persist else t("signaldeck_plugin_socketio.no") }}
+        </div>
+    </div>
+
+    <div class="state-row">
+        <div class="state-label">{{ t("signaldeck_plugin_socketio.connected_clients") }}</div>
+        <div class="state-value">{{ displayData.room.client_count }}</div>
+    </div>
+
+    {% for client in displayData.room.clients %}
+    <div class="state-row">
+        <div class="state-label">{{ client.name }}</div>
+        <div class="state-value">{{ client.status }}</div>
+    </div>
+    {% endfor %}
+
+    <div class="state-row">
+        <div class="state-label">{{ t("signaldeck_plugin_socketio.message") }}</div>
+        <div class="state-value">
+            {{ renderInputField("socketio_message", "text", "", displayData) }}
+        </div>
+    </div>
+
+    <div>
+        {{ renderButton("send", displayData) }}
+        {{ renderButton("refresh", displayData) }}
+    </div>
+</div>

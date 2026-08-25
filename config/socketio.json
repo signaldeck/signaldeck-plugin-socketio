@@ -1,0 +1,82 @@
+{
+  "page_title": "Socket.IO",
+  "i18n": {
+    "lang": "de",
+    "lang_fallback": "en"
+  },
+  "data_stores": [
+    {
+      "name": "sqlite_socketio",
+      "class": "signaldeck_plugin_sqlite.persistence.sqlite_store.SqliteStore",
+      "config": {
+        "url": "sqlite:////app/db/socketio.db",
+        "backup_name": "backup_socketio.sqlite"
+      }
+    }
+  ],
+  "processors": [
+    {
+      "name": "socketio",
+      "class": "signaldeck_plugin_socketio.processor.SocketIOProcessor",
+      "config": {
+        "cors_allowed_origins": "*",
+        "ping_interval": 25,
+        "ping_timeout": 20,
+        "max_http_buffer_size": 1000000,
+        "rooms": [
+          {
+            "name": "family",
+            "display_name": "Familie",
+            "persist": true
+          },
+          {
+            "name": "privat",
+            "display_name": "Privat",
+            "persist": true
+          }
+        ],
+        "export": {
+          "values": [
+            {
+              "socketio.connected_clients": "connected_clients"
+            },
+            {
+              "socketio.users": "users"
+            },
+            {
+              "socketio.rooms": "rooms"
+            },
+            {
+              "socketio.room_overview": "room_overview"
+            }
+          ],
+          "methods": [
+            {
+              "name": "socketio.clients_for_room",
+              "target_function": "get_clients_for_room"
+            },
+            {
+              "name": "socketio.room_settings",
+              "target_function": "get_room_settings"
+            }
+          ]
+        },
+        "persist": [
+          {
+            "type": "sqlite_socketio"
+          }
+        ]
+      }
+    }
+  ],
+  "groups": [
+    {
+      "name": "Socket.IO",
+      "data": "/config/group_socketio.json"
+    }
+  ],
+  "cmd": {
+    "alias": [],
+    "script": []
+  }
+}

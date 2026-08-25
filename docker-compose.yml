@@ -1,0 +1,23 @@
+services:
+  signaldeck:
+    image: signaldeck-socketio
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      SIGNALDECK_MODE: dev
+      SIGNALDECK_CONFIG: /config/socketio.json
+      SIGNALDECK_LOGGING_CONFIG: /app/logging_config.json
+      SIGNALDECK_COLLECT_DATA: false
+      SIGNALDECK_DEBUG: false
+      SIGNALDECK_DEBUG_AUTO_RELOAD: false
+      SIGNALDECK_DEBUG_PORT: 5555
+    volumes:
+      - ./config:/config
+      - ./plugins:/plugins
+      - ./logs:/app/logs
+      - ./db:/app/db
+      - ./logging_config.json:/app/logging_config.json
+    ports:
+      - "5000:5000"
+      - "5555:5555"

@@ -1,0 +1,57 @@
+{% from "ui/_utils.html" import renderButton, renderStateDiv, renderInputField %}
+
+<div class="state-container">
+    {{ renderStateDiv(displayData) }}
+
+    <div class="state-row">
+        <div class="state-label">{{ t("signaldeck_plugin_socketio.status") }}</div>
+        <div class="state-value">{{ t("signaldeck_plugin_socketio.running") }}</div>
+    </div>
+
+    <div class="state-row">
+        <div class="state-label">{{ t("signaldeck_plugin_socketio.connected_clients") }}</div>
+        <div class="state-value">{{ displayData.connected_clients }}</div>
+    </div>
+
+    <div class="state-row">
+        <div class="state-label">{{ t("signaldeck_plugin_socketio.rooms") }}</div>
+        <div class="state-value">{{ displayData.rooms|length }}</div>
+    </div>
+
+    {% for room in displayData.rooms %}
+    <div class="state-row">
+        <div class="state-label">{{ room.display_name }}</div>
+        <div class="state-value">
+            {{ room.client_count }} {{ t("signaldeck_plugin_socketio.clients") }}
+            · {{ t("signaldeck_plugin_socketio.configured") }}:
+            {{ t("signaldeck_plugin_socketio.yes") if room.configured else t("signaldeck_plugin_socketio.no") }}
+            · {{ t("signaldeck_plugin_socketio.persist") }}:
+            {{ t("signaldeck_plugin_socketio.yes") if room.persist else t("signaldeck_plugin_socketio.no") }}
+        </div>
+    </div>
+    {% endfor %}
+
+    <div class="state-row">
+        <div class="state-label">{{ t("signaldeck_plugin_socketio.room") }}</div>
+        <div class="state-value">
+            <select id="socketio_room_{{ displayData.hash }}">
+                <option value="">{{ t("signaldeck_plugin_socketio.all_clients") }}</option>
+                {% for room in displayData.rooms %}
+                <option value="{{ room.name }}">{{ room.display_name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+
+    <div class="state-row">
+        <div class="state-label">{{ t("signaldeck_plugin_socketio.message") }}</div>
+        <div class="state-value">
+            {{ renderInputField("socketio_message", "text", "", displayData) }}
+        </div>
+    </div>
+
+    <div>
+        {{ renderButton("send", displayData) }}
+        {{ renderButton("refresh", displayData) }}
+    </div>
+</div>

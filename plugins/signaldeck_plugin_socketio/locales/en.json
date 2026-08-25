@@ -1,0 +1,16 @@
+{
+  "signaldeck_plugin_socketio.all_clients": "All clients",
+  "signaldeck_plugin_socketio.clients": "Clients",
+  "signaldeck_plugin_socketio.configured": "Configured",
+  "signaldeck_plugin_socketio.connected_clients": "Connected clients",
+  "signaldeck_plugin_socketio.message": "Message",
+  "signaldeck_plugin_socketio.no": "No",
+  "signaldeck_plugin_socketio.persist": "Persist",
+  "signaldeck_plugin_socketio.refresh": "Refresh",
+  "signaldeck_plugin_socketio.room": "Room",
+  "signaldeck_plugin_socketio.rooms": "Rooms",
+  "signaldeck_plugin_socketio.running": "Running",
+  "signaldeck_plugin_socketio.send": "Send",
+  "signaldeck_plugin_socketio.status": "Status",
+  "signaldeck_plugin_socketio.yes": "Yes"
+}
