@@ -56,6 +56,7 @@ def register_app(app, context) -> None:
     )
 
 
+
 def register(app, ctx=None) -> None:
     """Compatibility with older SignalDeck cores."""
     register_app(app, ctx)

@@ -47,5 +47,15 @@
     }
   ],
   "server_sender_id": "signaldeck",
-  "server_sender_name": "SignalDeck"
+  "server_sender_name": "SignalDeck",
+  "message_routes": [
+      {
+          "source": "battery",
+          "rooms": ["energy"]
+      },
+      {
+          "source": "pv",
+          "rooms": ["energy"]
+      }
+  ]
 }

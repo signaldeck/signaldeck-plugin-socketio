@@ -1,12 +1,21 @@
 from __future__ import annotations
 
+import json
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from threading import RLock
 from typing import Any
 from uuid import uuid4
 
 from .registry import ClientRegistry
+
+
+SCHEMA_VERSION = 1
+DEFAULT_TYPE = "chat"
+DEFAULT_OPERATION = "upsert"
+SYSTEM_TYPE = "system"
+SYSTEM_OPERATION = "notify"
 
 
 @dataclass(frozen=True)
@@ -43,10 +52,17 @@ class SocketIOService:
         self._config: dict[str, Any] = dict(self.DEFAULT_CONFIG)
         self._rooms: dict[str, RoomSettings] = {}
         self._socketio = None
-        self._message_recorder_owner = None
-        self._message_recorder = None
+
+        self._event_recorder_owner = None
+        self._event_recorder = None
         self._history_provider_owner = None
         self._history_provider = None
+
+        self._message_bus_unsubscribe = None
+
+    # ------------------------------------------------------------------
+    # Configuration / rooms
+    # ------------------------------------------------------------------
 
     def configure(self, config: dict | None) -> None:
         config = config or {}
@@ -57,17 +73,30 @@ class SocketIOService:
                     self._config[key] = config[key]
 
             rooms: dict[str, RoomSettings] = {}
+
             for room_config in config.get("rooms", []):
                 if not isinstance(room_config, dict):
-                    raise ValueError("Each entry in 'rooms' must be an object")
+                    raise ValueError(
+                        "Each entry in 'rooms' must be an object"
+                    )
 
                 name = str(room_config.get("name", "")).strip()
                 if not name:
-                    raise ValueError("Each configured room requires a non-empty 'name'")
-                if name in rooms:
-                    raise ValueError(f"Room '{name}' is configured more than once")
+                    raise ValueError(
+                        "Each configured room requires a non-empty 'name'"
+                    )
 
-                known_keys = {"name", "display_name", "persist"}
+                if name in rooms:
+                    raise ValueError(
+                        f"Room '{name}' is configured more than once"
+                    )
+
+                known_keys = {
+                    "name",
+                    "display_name",
+                    "persist",
+                }
+
                 options = {
                     key: value
                     for key, value in room_config.items()
@@ -76,8 +105,12 @@ class SocketIOService:
 
                 rooms[name] = RoomSettings(
                     name=name,
-                    display_name=str(room_config.get("display_name") or name),
-                    persist=bool(room_config.get("persist", False)),
+                    display_name=str(
+                        room_config.get("display_name") or name
+                    ),
+                    persist=bool(
+                        room_config.get("persist", False)
+                    ),
                     configured=True,
                     options=options,
                 )
@@ -89,14 +122,24 @@ class SocketIOService:
         with self._config_lock:
             return dict(self._config)
 
+    def bind_message_bus(self, unsubscribe) -> None:
+        self.unbind_message_bus()
+        self._message_bus_unsubscribe = unsubscribe
+
+    def unbind_message_bus(self) -> None:
+        if self._message_bus_unsubscribe is not None:
+            self._message_bus_unsubscribe()
+            self._message_bus_unsubscribe = None
+
     def room_settings(self, room: str) -> RoomSettings:
         room = str(room)
+
         with self._config_lock:
             configured = self._rooms.get(room)
             if configured is not None:
                 return configured
 
-        # Unknown rooms are valid, but never persistent.
+        # Unknown rooms remain valid, but are never implicitly persistent.
         return RoomSettings(
             name=room,
             display_name=room,
@@ -109,13 +152,17 @@ class SocketIOService:
             return list(self._rooms.values())
 
     def all_room_names(self) -> list[str]:
-        names = {room.name for room in self.configured_rooms()}
+        names = {
+            room.name
+            for room in self.configured_rooms()
+        }
         names.update(self.registry.active_rooms())
         return sorted(names)
 
     def room_overview(self, room: str) -> dict[str, Any]:
         settings = self.room_settings(room)
         clients = self.registry.clients_for_room(room)
+
         return {
             **settings.to_dict(),
             "active": bool(clients),
@@ -124,109 +171,269 @@ class SocketIOService:
         }
 
     def rooms_overview(self) -> list[dict[str, Any]]:
-        return [self.room_overview(room) for room in self.all_room_names()]
+        return [
+            self.room_overview(room)
+            for room in self.all_room_names()
+        ]
 
     def may_persist(self, room: str) -> bool:
         return self.room_settings(room).persist
 
     # ------------------------------------------------------------------
-    # Canonical chat payload
+    # Generic event envelope
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _millis(value: Any | None) -> int:
+    def _millis(
+        value: Any | None,
+        *,
+        default: int | None = None,
+    ) -> int:
         if value is None:
+            if default is not None:
+                return default
             return int(time.time() * 1000)
+
         try:
             return int(value)
         except (TypeError, ValueError):
+            if default is not None:
+                return default
             return int(time.time() * 1000)
 
-    def create_message(
+    @staticmethod
+    def _positive_int(
+        value: Any,
+        *,
+        default: int,
+    ) -> int:
+        try:
+            result = int(value)
+        except (TypeError, ValueError):
+            return default
+
+        return result if result > 0 else default
+
+    @staticmethod
+    def _normalize_payload(
+        payload: Any,
+    ) -> dict[str, Any]:
+        if not isinstance(payload, Mapping):
+            raise ValueError(
+                "Event payload must be a JSON object/dict. "
+                "Nested objects and arrays are allowed."
+            )
+
+        normalized = dict(payload)
+
+        try:
+            # Validation only. The object itself remains nested on the wire.
+            json.dumps(
+                normalized,
+                ensure_ascii=False,
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "Event payload contains non-JSON-serializable values"
+            ) from exc
+
+        return normalized
+
+    def create_event(
         self,
         *,
         room: str,
-        content: Any,
+        payload: Mapping[str, Any],
         transmitter: Any,
         transmitter_name: Any | None = None,
-        message_id: Any | None = None,
-        date: Any | None = None,
-        content_type: str = "text",
-        is_system: bool = False,
-        content_uri: str | None = None,
+        event_type: str = DEFAULT_TYPE,
+        operation: str = DEFAULT_OPERATION,
+        event_id: Any | None = None,
+        object_id: Any | None = None,
+        revision: Any = 1,
+        schema_version: Any = SCHEMA_VERSION,
+        created_at: Any | None = None,
     ) -> dict[str, Any]:
+        """Create the canonical schemaVersion=1 event envelope.
+
+        `payload` is intentionally opaque to the backend and may contain
+        arbitrarily nested JSON objects and arrays.
+
+        `receivedAt` is always generated here by the server.
+        """
+        event_id = str(event_id or uuid4()).strip()
+        event_type = str(event_type or "").strip()
+        operation = str(operation or "").strip()
+        object_id = str(object_id or event_id).strip()
+
+        if not event_id:
+            raise ValueError("Event id must not be empty")
+        if not event_type:
+            raise ValueError("Event type must not be empty")
+        if not operation:
+            raise ValueError("Event operation must not be empty")
+        if not object_id:
+            raise ValueError("Event objectId must not be empty")
+
+        received_at = int(time.time() * 1000)
+        created_at = self._millis(
+            created_at,
+            default=received_at,
+        )
+
+        transmitter_value = (
+            str(transmitter).strip()
+            if transmitter is not None
+            else ""
+        )
+        if not transmitter_value:
+            raise ValueError(
+                "Event transmitter must not be empty"
+            )
+
+        transmitter_name_value = str(
+            transmitter_name
+            if transmitter_name is not None
+            else transmitter_value
+        )
+
         return {
-            "id": str(message_id or uuid4()),
-            "date": self._millis(date),
-            "transmitter": str(transmitter) if transmitter is not None else None,
-            "transmitterName": (
-                str(transmitter_name)
-                if transmitter_name is not None
-                else None
+            "schemaVersion": self._positive_int(
+                schema_version,
+                default=SCHEMA_VERSION,
             ),
+            "id": event_id,
+            "createdAt": created_at,
+            "receivedAt": received_at,
             "room": str(room),
-            "content": str(content),
-            "contentUri": content_uri,
-            "contentType": str(content_type or "text"),
-            "isSystem": bool(is_system),
+            "transmitter": transmitter_value,
+            "transmitterName": transmitter_name_value,
+            "type": event_type,
+            "operation": operation,
+            "objectId": object_id,
+            "revision": self._positive_int(
+                revision,
+                default=1,
+            ),
+            "payload": self._normalize_payload(payload),
         }
 
-    def create_system_message(self, *, room: str, content: str) -> dict[str, Any]:
+    def create_system_event(
+        self,
+        *,
+        room: str,
+        kind: str,
+        text: str,
+        actor_id: Any | None = None,
+        actor_name: Any | None = None,
+    ) -> dict[str, Any]:
+        """Create an ephemeral system notification event."""
         cfg = self.config
-        return self.create_message(
+
+        payload: dict[str, Any] = {
+            "kind": str(kind),
+            "text": str(text),
+        }
+
+        if actor_id is not None or actor_name is not None:
+            payload["actor"] = {
+                "id": (
+                    str(actor_id)
+                    if actor_id is not None
+                    else None
+                ),
+                "name": (
+                    str(actor_name)
+                    if actor_name is not None
+                    else None
+                ),
+            }
+
+        return self.create_event(
             room=room,
-            content=content,
+            payload=payload,
             transmitter=cfg["server_sender_id"],
             transmitter_name=cfg["server_sender_name"],
-            is_system=True,
+            event_type=SYSTEM_TYPE,
+            operation=SYSTEM_OPERATION,
         )
 
     # ------------------------------------------------------------------
     # PersistData bridge
     # ------------------------------------------------------------------
 
-    def bind_message_recorder(self, owner, recorder) -> None:
-        self._message_recorder_owner = owner
-        self._message_recorder = recorder
+    def bind_event_recorder(
+        self,
+        owner,
+        recorder,
+    ) -> None:
+        self._event_recorder_owner = owner
+        self._event_recorder = recorder
 
-    def unbind_message_recorder(self, owner) -> None:
-        if self._message_recorder_owner is owner:
-            self._message_recorder_owner = None
-            self._message_recorder = None
+    def unbind_event_recorder(
+        self,
+        owner,
+    ) -> None:
+        if self._event_recorder_owner is owner:
+            self._event_recorder_owner = None
+            self._event_recorder = None
 
-    def record_message(self, message: dict[str, Any]) -> bool:
-        room = str(message.get("room", ""))
+    def record_event(
+        self,
+        event: dict[str, Any],
+    ) -> bool:
+        room = str(event.get("room", ""))
+
         if not room or not self.may_persist(room):
             return False
-        if self._message_recorder is None:
+
+        if self._event_recorder is None:
             return False
 
-        self._message_recorder(dict(message))
+        self._event_recorder(dict(event))
         return True
 
-    def bind_history_provider(self, owner, provider) -> None:
+
+    def bind_history_provider(
+        self,
+        owner,
+        provider,
+    ) -> None:
         self._history_provider_owner = owner
         self._history_provider = provider
 
-    def unbind_history_provider(self, owner) -> None:
+    def unbind_history_provider(
+        self,
+        owner,
+    ) -> None:
         if self._history_provider_owner is owner:
             self._history_provider_owner = None
             self._history_provider = None
 
-    def get_missed_messages(self, room: str, last_message_id: Any) -> list[dict]:
+    def get_missed_events(
+        self,
+        room: str,
+        last_event_id: Any,
+    ) -> list[dict]:
         if not self.may_persist(room):
             raise ValueError(
-                f"Room '{room}' is not persistent and has no server-side history"
+                f"Room '{room}' is not persistent and has no "
+                "server-side history"
             )
+
         if self._history_provider is None:
-            raise RuntimeError("No Socket.IO history provider is registered")
+            raise RuntimeError(
+                "No Socket.IO history provider is registered"
+            )
+
         return self._history_provider(
             room=room,
-            last_message_id=last_message_id,
+            last_event_id=last_event_id,
         )
 
+
     # ------------------------------------------------------------------
-    # Socket.IO binding / server-originated messages
+    # Socket.IO binding / server-originated events
     # ------------------------------------------------------------------
 
     def bind_socketio(self, socketio) -> None:
@@ -235,37 +442,65 @@ class SocketIOService:
     @property
     def socketio(self):
         if self._socketio is None:
-            raise RuntimeError("Socket.IO service is not registered on a Flask app")
+            raise RuntimeError(
+                "Socket.IO service is not registered on a Flask app"
+            )
         return self._socketio
 
-    def emit(self, event: str, data: Any = None, **kwargs) -> None:
-        self.socketio.emit(event, data, **kwargs)
-
-    def send_server_message(
+    def emit(
         self,
-        content: Any,
+        event: str,
+        data: Any = None,
+        **kwargs,
+    ) -> None:
+        self.socketio.emit(
+            event,
+            data,
+            **kwargs,
+        )
+
+    def send_server_event(
+        self,
         *,
+        payload: Mapping[str, Any],
         room: str | None = None,
-        content_type: str = "text",
+        event_type: str = DEFAULT_TYPE,
+        operation: str = DEFAULT_OPERATION,
+        object_id: str | None = None,
+        revision: int = 1,
+        event_id: str | None = None,
+        created_at: Any | None = None,
     ) -> dict[str, Any]:
         cfg = self.config
-        message = self.create_message(
+
+        event = self.create_event(
             room=room or "",
-            content=content,
+            payload=payload,
             transmitter=cfg["server_sender_id"],
             transmitter_name=cfg["server_sender_name"],
-            content_type=content_type,
-            is_system=False,
+            event_type=event_type,
+            operation=operation,
+            object_id=object_id,
+            revision=revision,
+            event_id=event_id,
+            created_at=created_at,
         )
 
         if room:
-            self.record_message(message)
+            self.record_event(event)
 
         kwargs = {"room": room} if room else {}
-        self.emit("message", message, **kwargs)
-        return message
+        self.emit(
+            "event",
+            event,
+            **kwargs,
+        )
 
-    def disconnect_all_clients(self) -> tuple[int, list[tuple[str, Exception]]]:
+        return event
+
+    def disconnect_all_clients(
+        self,
+    ) -> tuple[int, list[tuple[str, Exception]]]:
         if self._socketio is None:
             return 0, []
 
@@ -274,7 +509,10 @@ class SocketIOService:
 
         for sid in sids:
             try:
-                self._socketio.server.disconnect(sid, namespace="/")
+                self._socketio.server.disconnect(
+                    sid,
+                    namespace="/",
+                )
             except Exception as exc:
                 errors.append((sid, exc))
 
