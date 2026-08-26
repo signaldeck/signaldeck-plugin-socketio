@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 
 from signaldeck_sdk import DisplayProcessor, PersistData
 
+from .commands import SocketIOSendCommand
 from .displaydata import SocketIODisplayData
 from .history import MessageHistory
 from .service import service
@@ -140,6 +141,9 @@ class SocketIOProcessor(PersistData, DisplayProcessor):
 
     def get_room_overview(self, room: str) -> dict:
         return service.room_overview(room)
+
+    def registerCommands(self, cmd):
+        cmd.registerCmd(SocketIOSendCommand(service))
 
     # ------------------------------------------------------------------
     # PersistData lifecycle / history bootstrap
