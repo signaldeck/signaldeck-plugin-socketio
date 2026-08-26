@@ -26,4 +26,11 @@
       "runtime-only-room"
     ]
   }
+  ,
+  {
+  "name": "Scripts",
+  "type": "scripts",
+  "value": "*",
+  "element": "Script Console"
+}
 ]

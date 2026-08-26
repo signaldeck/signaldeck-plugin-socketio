@@ -16,6 +16,12 @@
   ],
   "processors": [
     {
+      "name": "scripts",
+      "class": "signaldeck_plugin_main.processors.script.script_processor.ScriptProcessor",
+      "config": {}
+    }
+    ,
+    {
       "name": "socketio",
       "class": "signaldeck_plugin_socketio.processor.SocketIOProcessor",
       "config": {
@@ -35,32 +41,6 @@
             "persist": true
           }
         ],
-        "export": {
-          "values": [
-            {
-              "socketio.connected_clients": "connected_clients"
-            },
-            {
-              "socketio.users": "users"
-            },
-            {
-              "socketio.rooms": "rooms"
-            },
-            {
-              "socketio.room_overview": "room_overview"
-            }
-          ],
-          "methods": [
-            {
-              "name": "socketio.clients_for_room",
-              "target_function": "get_clients_for_room"
-            },
-            {
-              "name": "socketio.room_settings",
-              "target_function": "get_room_settings"
-            }
-          ]
-        },
         "persist": [
           {
             "type": "sqlite_socketio"

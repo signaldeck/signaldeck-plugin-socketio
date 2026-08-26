@@ -1,0 +1,14 @@
+{
+  "name": "test",
+  "variables": [
+    {
+      "name": "t",
+      "type": "int"
+    }
+  ],
+  "commands": [
+    "echo Hallo",
+    "sleep $t",
+    "echo Hallo again"
+  ]
+}

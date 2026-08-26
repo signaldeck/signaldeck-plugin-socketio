@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from threading import RLock
@@ -52,6 +53,7 @@ class SocketIOService:
         self._config: dict[str, Any] = dict(self.DEFAULT_CONFIG)
         self._rooms: dict[str, RoomSettings] = {}
         self._socketio = None
+        self.logger = logging.getLogger(__name__)
 
         self._event_recorder_owner = None
         self._event_recorder = None
@@ -472,7 +474,11 @@ class SocketIOService:
         created_at: Any | None = None,
     ) -> dict[str, Any]:
         cfg = self.config
-
+        self.logger.info(
+            "Sending server-originated Socket.IO event to room '%s' with payload: %s",
+            room or "",
+            payload,
+        )
         event = self.create_event(
             room=room or "",
             payload=payload,

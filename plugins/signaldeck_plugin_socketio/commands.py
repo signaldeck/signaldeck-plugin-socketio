@@ -12,6 +12,7 @@ class SocketIOSendCommand(Command):
         self.service = socketio_service
 
     async def run(self, room_name, *message_parts, cmdRes=None, stopEvent=None):
+        print(f"Running socketio_send command with room_name={room_name} and message_parts={message_parts}")
         room = str(room_name).strip()
         if not room:
             raise ValueError("socketio_send requires a non-empty room name")
@@ -20,7 +21,14 @@ class SocketIOSendCommand(Command):
         if not message:
             raise ValueError("socketio_send requires a message")
 
-        self.service.send_server_message(message, room=room)
+        payload = {
+                            "text": str(message),
+                            "contentType": str(
+                                "text"
+                            ),
+                            "system":False,
+                        }
+        self.service.send_server_event(payload=payload, room=room)
 
         if cmdRes is not None:
             cmdRes.appendState(

@@ -1,0 +1,16 @@
+{
+  "name": "send_to_room",
+  "variables": [
+    {
+      "name": "room",
+      "type": "str"
+    },
+    {
+      "name": "msg",
+      "type": "str"
+    }
+  ],
+  "commands": [
+    "socketio_send $room $msg"
+  ]
+}
