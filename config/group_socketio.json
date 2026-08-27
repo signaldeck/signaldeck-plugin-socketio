@@ -32,5 +32,11 @@
   "type": "scripts",
   "value": "*",
   "element": "Script Console"
+},
+  {
+  "name": "help",
+  "type": "scripts",
+  "value": "@help",
+  "element": "Script Help"
 }
 ]

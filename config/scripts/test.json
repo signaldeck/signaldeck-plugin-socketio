@@ -8,7 +8,7 @@
   ],
   "commands": [
     "echo Hallo",
-    "sleep $t",
+    "sleep $t$",
     "echo Hallo again"
   ]
 }

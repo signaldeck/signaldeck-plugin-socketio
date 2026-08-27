@@ -5,7 +5,7 @@ services:
       context: .
       dockerfile: Dockerfile
     environment:
-      SIGNALDECK_MODE: dev
+      SIGNALDECK_MODE: prod
       SIGNALDECK_CONFIG: /config/socketio.json
       SIGNALDECK_LOGGING_CONFIG: /app/logging_config.json
       SIGNALDECK_COLLECT_DATA: false
