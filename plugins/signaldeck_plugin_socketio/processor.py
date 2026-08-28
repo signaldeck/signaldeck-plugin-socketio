@@ -40,6 +40,7 @@ EVENT_PERSIST_FIELDS = [
     {"name": "operation", "dtype": "str", "display_name": "Operation"},
     {"name": "objectId", "dtype": "str", "display_name": "Object ID"},
     {"name": "revision", "dtype": "int", "display_name": "Revision"},
+    {"name": "key_id", "dtype": "str", "display_name": "Encryption Key ID"},
     {"name": "payload", "dtype": "str", "display_name": "Payload JSON"},
 ]
 
@@ -54,6 +55,7 @@ HISTORY_FIELDS = [
     "operation",
     "objectId",
     "revision",
+    "key_id",
     "payload",
 ]
 
@@ -75,16 +77,18 @@ class SocketIOProcessor(PersistData, DisplayProcessor):
             "operation": "upsert",
             "objectId": "appointment-4711",
             "revision": 4,
+            "key_id": "family-...",  # optional; absent for clear text
             "payload": { ... arbitrary nested JSON object ... }
         }
 
     SignalDeck only interprets the transport metadata needed for routing,
     history and deduplication. ``type``, ``operation``, ``objectId``,
-    ``revision`` and especially ``payload`` remain opaque application data.
+    ``revision``, optional ``key_id`` and especially ``payload`` remain opaque
+    application data. The server does not perform encryption or decryption.
 
     PersistData stores ``payload`` as a JSON string. On the wire it is restored
     to a JSON object, so nested dictionaries/lists are preserved without
-    flattening.
+    flattening. ``key_id`` is stored only when present.
     """
 
     def __init__(self, name, config, ctx, valueProvider, collect_data):
@@ -320,6 +324,13 @@ class SocketIOProcessor(PersistData, DisplayProcessor):
             event.get("revision"),
             default=0,
         )
+        key_id_raw = event.get("key_id")
+        key_id = None
+        if key_id_raw is not None:
+            key_id = str(key_id_raw).strip()
+            if not key_id:
+                raise ValueError("Event key_id must not be empty when present")
+
         payload = self._normalize_payload(
             event.get("payload")
         )
@@ -348,7 +359,7 @@ class SocketIOProcessor(PersistData, DisplayProcessor):
             default=now,
         )
 
-        return {
+        normalized = {
             "schemaVersion": schema_version,
             "id": event_id,
             "createdAt": created_at,
@@ -364,6 +375,11 @@ class SocketIOProcessor(PersistData, DisplayProcessor):
             # MessageHistory currently uses `date` for retention internally.
             "date": received_at,
         }
+
+        if key_id is not None:
+            normalized["key_id"] = key_id
+
+        return normalized
 
     @staticmethod
     def _normalize_payload(payload: Any) -> dict[str, Any]:
@@ -578,31 +594,37 @@ class SocketIOProcessor(PersistData, DisplayProcessor):
                     or str(transmitter)
                 )
 
-            records.append(
-                {
-                    "schemaVersion": self._positive_int(
-                        row.get("schemaVersion"),
-                        default=SCHEMA_VERSION,
-                    ),
-                    "id": str(event_id),
-                    "createdAt": created_at,
-                    "receivedAt": received_at,
-                    "room": str(room),
-                    "transmitter": str(transmitter),
-                    "transmitterName": str(transmitter_name),
-                    "type": str(event_type),
-                    "operation": str(
-                        row.get("operation") or DEFAULT_OPERATION
-                    ),
-                    "objectId": str(object_id),
-                    "revision": self._positive_int(
-                        row.get("revision"),
-                        default=1,
-                    ),
-                    "payload": payload,
-                    "date": received_at,
-                }
-            )
+            record = {
+                "schemaVersion": self._positive_int(
+                    row.get("schemaVersion"),
+                    default=SCHEMA_VERSION,
+                ),
+                "id": str(event_id),
+                "createdAt": created_at,
+                "receivedAt": received_at,
+                "room": str(room),
+                "transmitter": str(transmitter),
+                "transmitterName": str(transmitter_name),
+                "type": str(event_type),
+                "operation": str(
+                    row.get("operation") or DEFAULT_OPERATION
+                ),
+                "objectId": str(object_id),
+                "revision": self._positive_int(
+                    row.get("revision"),
+                    default=1,
+                ),
+                "payload": payload,
+                "date": received_at,
+            }
+
+            key_id = row.get("key_id")
+            if not self._missing(key_id):
+                key_id = str(key_id).strip()
+                if key_id:
+                    record["key_id"] = key_id
+
+            records.append(record)
 
         return records
 
@@ -660,7 +682,7 @@ class SocketIOProcessor(PersistData, DisplayProcessor):
         self,
         event: Mapping[str, Any],
     ) -> dict[str, Any]:
-        return {
+        data = {
             # PersistData/SqliteStore use the conventional technical `date`
             # field as the record timestamp. Semantically this is receivedAt.
             "date": event["receivedAt"],
@@ -680,6 +702,12 @@ class SocketIOProcessor(PersistData, DisplayProcessor):
                 separators=(",", ":"),
             ),
         }
+
+        key_id = event.get("key_id")
+        if key_id is not None:
+            data["key_id"] = str(key_id)
+
+        return data
 
     def _save_event_from_runtime(self, data: dict) -> None:
         try:
@@ -736,7 +764,7 @@ class SocketIOProcessor(PersistData, DisplayProcessor):
         self,
         event: Mapping[str, Any],
     ) -> dict[str, Any]:
-        return {
+        wire_event = {
             "schemaVersion": int(event["schemaVersion"]),
             "id": str(event["id"]),
             "createdAt": self._millis_from_datetime(event["createdAt"]),
@@ -750,6 +778,12 @@ class SocketIOProcessor(PersistData, DisplayProcessor):
             "revision": int(event["revision"]),
             "payload": dict(event["payload"]),
         }
+
+        key_id = event.get("key_id")
+        if key_id is not None:
+            wire_event["key_id"] = str(key_id)
+
+        return wire_event
 
     # ------------------------------------------------------------------
     # DisplayProcessor

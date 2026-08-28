@@ -444,6 +444,7 @@ def register_socketio_events(
                 revision=data.get("revision", 1),
                 schema_version=schema_version,
                 created_at=data.get("createdAt"),
+                key_id=data.get("key_id"),
             )
         except ValueError as exc:
             logger.warning(
