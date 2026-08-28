@@ -255,11 +255,16 @@ class SocketIOService:
         revision: Any = 1,
         schema_version: Any = SCHEMA_VERSION,
         created_at: Any | None = None,
+        key_id: Any | None = None,
     ) -> dict[str, Any]:
         """Create the canonical schemaVersion=1 event envelope.
 
         `payload` is intentionally opaque to the backend and may contain
         arbitrarily nested JSON objects and arrays.
+
+        `key_id` is optional transport metadata. Its presence marks payloads
+        that require client-side decryption; the backend never interprets the
+        key or ciphertext.
 
         `receivedAt` is always generated here by the server.
         """
@@ -276,6 +281,12 @@ class SocketIOService:
             raise ValueError("Event operation must not be empty")
         if not object_id:
             raise ValueError("Event objectId must not be empty")
+
+        key_id_value = None
+        if key_id is not None:
+            key_id_value = str(key_id).strip()
+            if not key_id_value:
+                raise ValueError("Event key_id must not be empty when present")
 
         received_at = int(time.time() * 1000)
         created_at = self._millis(
@@ -299,7 +310,7 @@ class SocketIOService:
             else transmitter_value
         )
 
-        return {
+        event = {
             "schemaVersion": self._positive_int(
                 schema_version,
                 default=SCHEMA_VERSION,
@@ -319,6 +330,11 @@ class SocketIOService:
             ),
             "payload": self._normalize_payload(payload),
         }
+
+        if key_id_value is not None:
+            event["key_id"] = key_id_value
+
+        return event
 
     def create_system_event(
         self,
@@ -472,6 +488,7 @@ class SocketIOService:
         revision: int = 1,
         event_id: str | None = None,
         created_at: Any | None = None,
+        key_id: str | None = None,
     ) -> dict[str, Any]:
         cfg = self.config
         self.logger.info(
@@ -490,6 +507,7 @@ class SocketIOService:
             revision=revision,
             event_id=event_id,
             created_at=created_at,
+            key_id=key_id,
         )
 
         if room:
