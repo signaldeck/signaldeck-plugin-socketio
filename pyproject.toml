@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "signaldeck-plugin-socketio"
-version = "0.6.0"
+version = "0.6.1"
 description = "Socket.IO communication plugin for SignalDeck"
 readme = "README.md"
 requires-python = ">=3.13"
