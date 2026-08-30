@@ -45,6 +45,22 @@ def test_blob_round_trip_uses_separate_capabilities(tmp_path):
         )
 
 
+def test_blob_store_resolves_relative_root_to_absolute_path(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    store = BlobStore("relative-blobs", max_blob_size_bytes=1024)
+    credentials = store.create(BytesIO(b"payload"))
+    handle = store.open_for_read(
+        credentials.blob_id,
+        credentials.read_token,
+    )
+
+    assert store.root.is_absolute()
+    assert store.root == (tmp_path / "relative-blobs").resolve()
+    assert handle.path.is_absolute()
+    assert handle.path.read_bytes() == b"payload"
+
+
 def test_blob_tokens_are_not_stored_in_plaintext(tmp_path):
     store = BlobStore(tmp_path, max_blob_size_bytes=1024)
     credentials = store.create(BytesIO(b"secret"))
