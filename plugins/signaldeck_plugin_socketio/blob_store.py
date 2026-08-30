@@ -55,7 +55,10 @@ class BlobStore:
     """
 
     def __init__(self, root: str | Path, max_blob_size_bytes: int) -> None:
-        self.root = Path(root)
+        # Resolve once when the store is created. All subsequent filesystem and
+        # Flask send_file operations therefore refer to exactly the same place,
+        # independent of Flask's application root.
+        self.root = Path(root).expanduser().resolve()
         self.max_blob_size_bytes = int(max_blob_size_bytes)
         if self.max_blob_size_bytes <= 0:
             raise ValueError("max_blob_size_bytes must be greater than zero")
