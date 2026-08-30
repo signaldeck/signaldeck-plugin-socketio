@@ -9,6 +9,7 @@ from threading import RLock
 from typing import Any
 from uuid import uuid4
 
+from .blob_store import BlobStore
 from .registry import ClientRegistry
 
 
@@ -45,6 +46,8 @@ class SocketIOService:
         "max_http_buffer_size": 1_000_000,
         "server_sender_id": "signaldeck",
         "server_sender_name": "SignalDeck",
+        "blob_store_path": "data/socketio-blobs",
+        "max_blob_size_bytes": 50 * 1024 * 1024,
     }
 
     def __init__(self) -> None:
@@ -53,6 +56,8 @@ class SocketIOService:
         self._config: dict[str, Any] = dict(self.DEFAULT_CONFIG)
         self._rooms: dict[str, RoomSettings] = {}
         self._socketio = None
+        self._blob_store: BlobStore | None = None
+        self._blob_store_signature: tuple[str, int] | None = None
         self.logger = logging.getLogger(__name__)
 
         self._event_recorder_owner = None
@@ -118,11 +123,26 @@ class SocketIOService:
                 )
 
             self._rooms = rooms
+            self._blob_store = None
+            self._blob_store_signature = None
 
     @property
     def config(self) -> dict[str, Any]:
         with self._config_lock:
             return dict(self._config)
+
+    @property
+    def blob_store(self) -> BlobStore:
+        with self._config_lock:
+            path = str(self._config["blob_store_path"])
+            max_size = int(self._config["max_blob_size_bytes"])
+            signature = (path, max_size)
+
+            if self._blob_store is None or self._blob_store_signature != signature:
+                self._blob_store = BlobStore(path, max_size)
+                self._blob_store_signature = signature
+
+            return self._blob_store
 
     def bind_message_bus(self, unsubscribe) -> None:
         self.unbind_message_bus()
@@ -141,7 +161,6 @@ class SocketIOService:
             if configured is not None:
                 return configured
 
-        # Unknown rooms remain valid, but are never implicitly persistent.
         return RoomSettings(
             name=room,
             display_name=room,
@@ -229,7 +248,6 @@ class SocketIOService:
         normalized = dict(payload)
 
         try:
-            # Validation only. The object itself remains nested on the wire.
             json.dumps(
                 normalized,
                 ensure_ascii=False,
@@ -257,17 +275,6 @@ class SocketIOService:
         created_at: Any | None = None,
         key_id: Any | None = None,
     ) -> dict[str, Any]:
-        """Create the canonical schemaVersion=1 event envelope.
-
-        `payload` is intentionally opaque to the backend and may contain
-        arbitrarily nested JSON objects and arrays.
-
-        `key_id` is optional transport metadata. Its presence marks payloads
-        that require client-side decryption; the backend never interprets the
-        key or ciphertext.
-
-        `receivedAt` is always generated here by the server.
-        """
         event_id = str(event_id or uuid4()).strip()
         event_type = str(event_type or "").strip()
         operation = str(operation or "").strip()
@@ -345,7 +352,6 @@ class SocketIOService:
         actor_id: Any | None = None,
         actor_name: Any | None = None,
     ) -> dict[str, Any]:
-        """Create an ephemeral system notification event."""
         cfg = self.config
 
         payload: dict[str, Any] = {
@@ -411,7 +417,6 @@ class SocketIOService:
         self._event_recorder(dict(event))
         return True
 
-
     def bind_history_provider(
         self,
         owner,
@@ -448,7 +453,6 @@ class SocketIOService:
             room=room,
             last_event_id=last_event_id,
         )
-
 
     # ------------------------------------------------------------------
     # Socket.IO binding / server-originated events
