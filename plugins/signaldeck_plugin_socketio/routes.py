@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from flask import Blueprint, Response, jsonify, request, send_file
+from flask import Blueprint, jsonify, request, send_file
 
 from .blob_store import BlobNotFound, BlobTooLarge, InvalidBlobToken
 from .service import SocketIOService
@@ -98,7 +98,7 @@ def create_blueprint(service: SocketIOService) -> Blueprint:
         except BlobNotFound:
             return jsonify({"error": "blob_not_found"}), 404
 
-        response: Response = send_file(
+        response = send_file(
             handle.path,
             mimetype="application/octet-stream",
             as_attachment=False,
@@ -107,7 +107,8 @@ def create_blueprint(service: SocketIOService) -> Blueprint:
             max_age=0,
         )
         response.headers["Cache-Control"] = "private, no-store"
-        response.headers["Content-Length"] = str(handle.size)
+        # Do not overwrite Content-Length here. send_file sets the correct
+        # length for both full responses and conditional/range responses.
         return response
 
     @bp.delete("/blobs/<blob_id>")
