@@ -9,7 +9,6 @@ from flask import request
 from flask_socketio import emit, join_room, leave_room
 
 from .service import SCHEMA_VERSION, SocketIOService
-from .incoming_routes import IncomingMessageRouter
 
 _registered = False
 
@@ -48,7 +47,6 @@ def register_socketio_events(
         or logging.getLogger(__name__)
     )
     registry = service.registry
-    incoming_router = IncomingMessageRouter(service.config.get("incoming_message_routes", []))
 
     # ------------------------------------------------------------------
     # Connection lifecycle
@@ -495,7 +493,7 @@ def register_socketio_events(
         # Route only explicitly configured, validated cleartext messages.
         # Listener failures must not alter successful Socket.IO delivery.
         try:
-            incoming_router.publish(context, event)
+            service.incoming_router.publish(context, event)
         except Exception:
             logger.exception("Unable to publish routed incoming Socket.IO message")
 
