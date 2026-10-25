@@ -41,6 +41,53 @@ configured = false
 persist = false
 ```
 
+## Opt-in inbound routes (Socket.IO → SignalDeck message bus)
+
+Unlike outbound `message_routes`, `incoming_message_routes` only publish a
+**selected subset** of incoming client messages. The default is an empty list
+and publishes nothing. Each route specifies allowed rooms, the chat event type,
+a case-insensitive command prefix and a SignalDeck message-bus source:
+
+```json
+{
+  "incoming_message_routes": [
+    {
+      "rooms": ["haus"],
+      "type": "chat",
+      "prefix": "@haus",
+      "source": "socketio.ai"
+    }
+  ],
+  "message_routes": [
+    {"source": "ai.socketio.haus", "rooms": ["haus"]}
+  ]
+}
+```
+
+After the existing Socket.IO membership and schema checks, a
+`send_event` of type `chat` with `operation="upsert"`,
+`payload.contentType="text"` and `payload.text="@haus Frage ..."` is
+emitted normally to the Socket.IO room and **additionally** published as:
+
+```python
+ctx.message(
+    source="socketio.ai", content="Frage ...",
+    metadata={"room": "haus", "event_id": "...",
+              "transmitter": "...", "transmitter_name": "..."},
+)
+```
+
+The prefix requires a whitespace boundary (so `@hausmeister` does not
+match). Messages without matching cleartext, and all other messages,
+are never forwarded. The server does not decrypt or inspect encryption keys.
+The AI listener should enqueue work immediately: SignalDeck message-bus
+listeners run synchronously. A failing listener never blocks delivery of
+the original Socket.IO event.
+
+The sample `config/socketio.json` defines an additional `haus` room and
+demonstrates matching inbound/outbound routes. Other processors can consume
+these generic routed messages; Socket.IO has no AI-specific dependency.
+
 ## Persisted event format
 
 For rooms with `persist: true`, the generic event envelope is persisted. `payload`
