@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from .blob_store import BlobStore
 from .registry import ClientRegistry
+from .incoming_routes import IncomingMessageRouter
 
 
 SCHEMA_VERSION = 1
@@ -67,6 +68,7 @@ class SocketIOService:
         self._history_provider = None
 
         self._message_bus_unsubscribe = None
+        self._incoming_router = IncomingMessageRouter([])
 
     # ------------------------------------------------------------------
     # Configuration / rooms
@@ -74,6 +76,8 @@ class SocketIOService:
 
     def configure(self, config: dict | None) -> None:
         config = config or {}
+        incoming_routes = config.get("incoming_message_routes", [])
+        router = IncomingMessageRouter(incoming_routes)
 
         with self._config_lock:
             for key in self.DEFAULT_CONFIG:
@@ -124,8 +128,15 @@ class SocketIOService:
                 )
 
             self._rooms = rooms
+            self._config["incoming_message_routes"] = incoming_routes
+            self._incoming_router = router
             self._blob_store = None
             self._blob_store_signature = None
+
+    @property
+    def incoming_router(self) -> IncomingMessageRouter:
+        with self._config_lock:
+            return self._incoming_router
 
     @property
     def config(self) -> dict[str, Any]:
