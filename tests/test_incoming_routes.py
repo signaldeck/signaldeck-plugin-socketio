@@ -90,3 +90,26 @@ def test_default_does_not_publish_anything():
     ctx = Context()
     assert IncomingMessageRouter([]).publish(ctx, event()) == 0
     assert not ctx.messages
+
+
+def test_service_configure_validates_and_replaces_inbound_routes():
+    from signaldeck_plugin_socketio.service import SocketIOService
+
+    service = SocketIOService()
+    settings = [{
+        "rooms": ["haus"], "type": "chat",
+        "prefix": "@haus", "source": "socketio.ai",
+    }]
+    service.configure({"incoming_message_routes": settings})
+    ctx = Context()
+    assert service.incoming_router.publish(ctx, event()) == 1
+    assert len(ctx.messages) == 1
+
+    # A config reload without routes must not retain the old publication rule.
+    service.configure({"rooms": []})
+    assert service.incoming_router.publish(ctx, event()) == 0
+    assert len(ctx.messages) == 1
+
+    with pytest.raises(ValueError):
+        service.configure({"incoming_message_routes": [{"rooms": []}]})
+    assert service.incoming_router.publish(ctx, event()) == 0
