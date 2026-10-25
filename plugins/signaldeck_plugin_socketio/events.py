@@ -490,6 +490,13 @@ def register_socketio_events(
             include_self=False,
         )
 
+        # Route only explicitly configured, validated cleartext messages.
+        # Listener failures must not alter successful Socket.IO delivery.
+        try:
+            service.incoming_router.publish(context, event)
+        except Exception:
+            logger.exception("Unable to publish routed incoming Socket.IO message")
+
         return {
             "ok": True,
             "id": event["id"],

@@ -19,8 +19,7 @@
       "name": "scripts",
       "class": "signaldeck_plugin_main.processors.script.script_processor.ScriptProcessor",
       "config": {}
-    }
-    ,
+    },
     {
       "name": "socketio",
       "class": "signaldeck_plugin_socketio.processor.SocketIOProcessor",
@@ -39,11 +38,34 @@
             "name": "privat",
             "display_name": "Privat",
             "persist": true
+          },
+          {
+            "name": "haus",
+            "display_name": "Haus",
+            "persist": false
           }
         ],
         "persist": [
           {
             "type": "sqlite_socketio"
+          }
+        ],
+        "incoming_message_routes": [
+          {
+            "rooms": [
+              "haus"
+            ],
+            "type": "chat",
+            "prefix": "@haus",
+            "source": "socketio.ai"
+          }
+        ],
+        "message_routes": [
+          {
+            "source": "ai.socketio.haus",
+            "rooms": [
+              "haus"
+            ]
           }
         ]
       }
