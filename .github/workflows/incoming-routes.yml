@@ -1,0 +1,18 @@
+name: Incoming Routes
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install "git+https://github.com/signaldeck/signaldeck-sdk.git@main"
+      - run: python -m pip install "flask>=3.0" "flask-socketio>=5.5,<6" "simple-websocket>=1.1,<2" pytest build
+      - run: python -m pip install -e . --no-deps
+      - run: python -m pytest -q tests/test_incoming_routes.py
+      - run: python -m build --wheel --outdir dist
