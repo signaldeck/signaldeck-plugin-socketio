@@ -48,6 +48,7 @@ class SocketIOService:
         "server_sender_name": "SignalDeck",
         "blob_store_path": "data/socketio-blobs",
         "max_blob_size_bytes": 50 * 1024 * 1024,
+        "incoming_message_routes": [],
     }
 
     def __init__(self) -> None:
