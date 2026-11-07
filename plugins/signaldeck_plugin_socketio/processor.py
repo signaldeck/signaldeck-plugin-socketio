@@ -807,6 +807,7 @@ class SocketIOProcessor(PersistData, DisplayProcessor):
         days: int | None,
         limit: int = 100,
         cursor: str | None = None,
+        date_from: datetime | None = None,
     ):
         """Fetch one page for a generic type, without relying on the 7-day RAM cache.
 
@@ -815,7 +816,7 @@ class SocketIOProcessor(PersistData, DisplayProcessor):
         """
         if not service.may_persist(room):
             raise ValueError("Room has no persistent history")
-        start = self._now() - timedelta(days=days) if days is not None else None
+        start = date_from if date_from is not None else (self._now() - timedelta(days=days) if days is not None else None)
         page = self.get_records_page(
             fields=HISTORY_FIELDS,
             filters={"room": room, "type": event_type},
