@@ -36,10 +36,7 @@ def test_only_persistent_configured_room_calls_recorder():
     calls = []
 
     owner = object()
-    service.bind_message_recorder(
-        owner,
-        lambda **kwargs: calls.append(kwargs),
-    )
+    service.bind_event_recorder(owner, lambda event: calls.append(event))
     service.configure({
         "rooms": [
             {"name": "saved", "persist": True},
@@ -47,35 +44,23 @@ def test_only_persistent_configured_room_calls_recorder():
         ]
     })
 
-    assert service.record_message(
-        room="saved",
-        transmitter="user-1",
-        message_id="m-1",
-        content="one",
-    ) is True
+    saved = service.create_event(
+        room="saved", transmitter="user-1",
+        event_id="m-1", payload={"text": "one"},
+    )
+    transient = service.create_event(
+        room="transient", transmitter="user-1",
+        event_id="m-2", payload={"text": "two"},
+    )
+    unknown = service.create_event(
+        room="unknown", transmitter="user-1",
+        event_id="m-3", payload={"text": "three"},
+    )
 
-    assert service.record_message(
-        room="transient",
-        transmitter="user-1",
-        message_id="m-2",
-        content="two",
-    ) is False
-
-    assert service.record_message(
-        room="unknown",
-        transmitter="user-1",
-        message_id="m-3",
-        content="three",
-    ) is False
-
-    assert calls == [
-        {
-            "room": "saved",
-            "transmitter": "user-1",
-            "message_id": "m-1",
-            "content": "one",
-        }
-    ]
+    assert service.record_event(saved) is True
+    assert service.record_event(transient) is False
+    assert service.record_event(unknown) is False
+    assert calls == [saved]
 
 
 def test_persistent_room_uses_bound_history_provider():
@@ -94,7 +79,7 @@ def test_persistent_room_uses_bound_history_provider():
         lambda **kwargs: calls.append(kwargs) or [{"id": "2", "content": "x"}],
     )
 
-    result = service.get_missed_messages("saved", "1")
+    result = service.get_missed_events("saved", "1")
 
     assert result == [{"id": "2", "content": "x"}]
-    assert calls == [{"room": "saved", "last_message_id": "1"}]
+    assert calls == [{"room": "saved", "last_event_id": "1"}]
