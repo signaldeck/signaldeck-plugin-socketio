@@ -906,6 +906,7 @@ class SocketIOProcessor(PersistData, DisplayProcessor):
 
         service.unbind_event_recorder(self)
         service.unbind_history_provider(self)
+        service.unbind_history_page_provider(self)
 
         disconnected, disconnect_errors = service.disconnect_all_clients()
         if disconnected:
