@@ -486,6 +486,7 @@ class SocketIOService:
         days: int | None,
         limit: int = 100,
         cursor: str | None = None,
+        date_from=None,
     ):
         if not self.may_persist(room):
             raise ValueError("Room has no persistent history")
@@ -493,7 +494,7 @@ class SocketIOService:
             raise RuntimeError("No paginated history provider registered")
         return self._history_page_provider(
             room=room, event_type=event_type, days=days,
-            limit=limit, cursor=cursor,
+            limit=limit, cursor=cursor, date_from=date_from,
         )
 
     # ------------------------------------------------------------------
