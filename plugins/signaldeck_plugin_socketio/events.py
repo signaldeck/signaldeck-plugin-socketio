@@ -233,12 +233,15 @@ def register_socketio_events(
         last_event_id = data.get("lastEventID")
         try:
             sync_requests = _parse_history_sync(data)
-            page_size = data.get("pageSize", 50)
-            if type(page_size) is not int or not 1 <= page_size <= 100:
-                raise ValueError("pageSize must be between 1 and 100")
-            sync_id = data.get("syncId", "")
-            if not isinstance(sync_id, str) or len(sync_id) > 128:
-                raise ValueError("syncId must be a short string")
+            page_size = 50
+            sync_id = ""
+            if sync_requests is not None:
+                page_size = data.get("pageSize", 50)
+                if type(page_size) is not int or not 1 <= page_size <= 100:
+                    raise ValueError("pageSize must be between 1 and 100")
+                sync_id = data.get("syncId", "")
+                if not isinstance(sync_id, str) or len(sync_id) > 128:
+                    raise ValueError("syncId must be a short string")
         except ValueError as exc:
             return {"ok": False, "error": "invalid_sync", "detail": str(exc)}
 
