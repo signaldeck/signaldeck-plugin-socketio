@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Mapping
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from flask import request
@@ -30,6 +31,36 @@ def _as_dict(
     return None
 
 
+def _parse_history_sync(data: dict):
+    """Parse the optional, type-scoped join_room history configuration.
+
+    None means a legacy join (unchanged history behavior).
+    A nonempty list means paged DB-backed synchronization.
+    """
+    if "sync" not in data:
+        return None
+    requests = data["sync"]
+    if not isinstance(requests, list) or not 1 <= len(requests) <= 16:
+        raise ValueError("sync must contain between 1 and 16 type requests")
+    result = []
+    seen_types = set()
+    for request in requests:
+        if not isinstance(request, dict):
+            raise ValueError("Each sync entry must be an object")
+        event_type = request.get("type")
+        days = request.get("days")
+        if not isinstance(event_type, str) or not 1 <= len(event_type.strip()) <= 128:
+            raise ValueError("sync type must be a nonempty string")
+        event_type = event_type.strip()
+        if event_type in seen_types:
+            raise ValueError("Duplicate sync type")
+        if days is not None and (type(days) is not int or not 1 <= days <= 36500):
+            raise ValueError("sync days must be a positive integer or null")
+        seen_types.add(event_type)
+        result.append((event_type, days))
+    return result
+
+
 def register_socketio_events(
     socketio,
     service: SocketIOService,
@@ -47,6 +78,60 @@ def register_socketio_events(
         or logging.getLogger(__name__)
     )
     registry = service.registry
+
+    def send_filtered_history(sid, room, requests, sync_id, page_size):
+        """Stream filtered history to the joining client in bounded pages.
+
+        Emission uses the same 'missed_events' event as the legacy protocol;
+        completion/error is signalled separately so a client can distinguish
+        an empty history from an unsuccessful transfer.
+        """
+        counts = {}
+        try:
+            for event_type, days in requests:
+                date_from = (
+                    datetime.now(timezone.utc) - timedelta(days=days)
+                    if days is not None else None
+                )
+                count = 0
+                cursor = None
+                while True:
+                    if room not in registry.rooms_for_sid(sid):
+                        return  # Client disconnected or left the room.
+                    events, next_cursor = service.get_history_page(
+                        room=room,
+                        event_type=event_type,
+                        days=days,
+                        date_from=date_from,
+                        limit=page_size,
+                        cursor=cursor,
+                    )
+                    if events:
+                        socketio.emit("missed_events", events, to=sid)
+                        count += len(events)
+                    if next_cursor is None:
+                        break
+                    if next_cursor == cursor:
+                        raise RuntimeError("History pagination cursor did not advance")
+                    cursor = next_cursor
+                    socketio.sleep(0)
+                counts[event_type] = count
+            if room in registry.rooms_for_sid(sid):
+                socketio.emit("history_sync_complete", {
+                    "ok": True,
+                    "room": room,
+                    "syncId": sync_id,
+                    "counts": counts,
+                }, to=sid)
+        except Exception:
+            logger.exception("Type-filtered history sync failed for room=%s", room)
+            if room in registry.rooms_for_sid(sid):
+                socketio.emit("history_sync_complete", {
+                    "ok": False,
+                    "room": room,
+                    "syncId": sync_id,
+                    "error": "history_sync_failed",
+                }, to=sid)
 
     # ------------------------------------------------------------------
     # Connection lifecycle
@@ -146,6 +231,19 @@ def register_socketio_events(
         room = data.get("room")
 
         last_event_id = data.get("lastEventID")
+        try:
+            sync_requests = _parse_history_sync(data)
+            page_size = 50
+            sync_id = ""
+            if sync_requests is not None:
+                page_size = data.get("pageSize", 50)
+                if type(page_size) is not int or not 1 <= page_size <= 100:
+                    raise ValueError("pageSize must be between 1 and 100")
+                sync_id = data.get("syncId", "")
+                if not isinstance(sync_id, str) or len(sync_id) > 128:
+                    raise ValueError("syncId must be a short string")
+        except ValueError as exc:
+            return {"ok": False, "error": "invalid_sync", "detail": str(exc)}
 
         if room is None or str(room).strip() == "":
             return {
@@ -161,6 +259,9 @@ def register_socketio_events(
                 "ok": False,
                 "error": "unknown_client",
             }
+
+        if sync_requests is not None and not service.may_persist(room):
+            return {"ok": False, "error": "room_not_persistent"}
 
         join_room(room)
         registry.add_room(
@@ -189,7 +290,13 @@ def register_socketio_events(
             room=room,
         )
 
-        if service.may_persist(room):
+        if service.may_persist(room) and sync_requests is not None:
+            # Capture request.sid before leaving the Flask request context.
+            socketio.start_background_task(
+                send_filtered_history,
+                request.sid, room, sync_requests, sync_id, page_size,
+            )
+        elif service.may_persist(room):
             try:
                 events = service.get_missed_events(
                     room,
@@ -223,6 +330,9 @@ def register_socketio_events(
                     room=request.sid,
                 )
 
+        elif sync_requests is not None:
+            # A room without server persistence must not report success.
+            return {"ok": False, "error": "room_not_persistent"}
         elif last_event_id is not None:
             emit(
                 "request_new_events",

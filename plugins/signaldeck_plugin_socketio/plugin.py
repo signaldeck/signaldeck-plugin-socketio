@@ -9,7 +9,7 @@ from .routes import create_blueprint
 from .service import service
 
 PLUGIN_ID = "signaldeck_plugin_socketio"
-PLUGIN_VERSION = "0.6.0"
+PLUGIN_VERSION = "0.6.3"
 
 socketio = SocketIO()
 _logger = logging.getLogger(__name__)

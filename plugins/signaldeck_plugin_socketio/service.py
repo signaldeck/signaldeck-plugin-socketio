@@ -66,6 +66,8 @@ class SocketIOService:
         self._event_recorder = None
         self._history_provider_owner = None
         self._history_provider = None
+        self._history_page_provider_owner = None
+        self._history_page_provider = None
 
         self._message_bus_unsubscribe = None
         self._incoming_router = IncomingMessageRouter([])
@@ -464,6 +466,35 @@ class SocketIOService:
         return self._history_provider(
             room=room,
             last_event_id=last_event_id,
+        )
+
+    def bind_history_page_provider(self, owner, provider) -> None:
+        """Install a paginated history provider without changing the legacy API."""
+        self._history_page_provider_owner = owner
+        self._history_page_provider = provider
+
+    def unbind_history_page_provider(self, owner) -> None:
+        if self._history_page_provider_owner is owner:
+            self._history_page_provider_owner = None
+            self._history_page_provider = None
+
+    def get_history_page(
+        self,
+        *,
+        room: str,
+        event_type: str,
+        days: int | None,
+        limit: int = 100,
+        cursor: str | None = None,
+        date_from=None,
+    ):
+        if not self.may_persist(room):
+            raise ValueError("Room has no persistent history")
+        if self._history_page_provider is None:
+            raise RuntimeError("No paginated history provider registered")
+        return self._history_page_provider(
+            room=room, event_type=event_type, days=days,
+            limit=limit, cursor=cursor, date_from=date_from,
         )
 
     # ------------------------------------------------------------------
