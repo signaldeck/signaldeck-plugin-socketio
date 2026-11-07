@@ -233,9 +233,12 @@ def register_socketio_events(
         last_event_id = data.get("lastEventID")
         try:
             sync_requests = _parse_history_sync(data)
+            auto_sync = data.get("autoSync") is True
+            if auto_sync and sync_requests is not None:
+                raise ValueError("autoSync and sync are mutually exclusive")
             page_size = 50
             sync_id = ""
-            if sync_requests is not None:
+            if sync_requests is not None or auto_sync:
                 page_size = data.get("pageSize", 50)
                 if type(page_size) is not int or not 1 <= page_size <= 100:
                     raise ValueError("pageSize must be between 1 and 100")
@@ -253,6 +256,21 @@ def register_socketio_events(
 
         room = str(room)
 
+        try:
+            client_config = service.room_client_config(room)
+            allowed_types = {"chat", "image", "system", *client_config["objectTypes"]}
+            if auto_sync:
+                sync_requests = [
+                    ("chat", 7), ("image", 7), ("system", 7),
+                    *[(t, item["sync_days"]) for t, item in client_config["objectTypes"].items()],
+                ]
+            elif sync_requests is not None:
+                # Older clients may still request appointment on every room.
+                # Server definitions are authoritative: do not expose undefined types.
+                sync_requests = [(t, d) for t, d in sync_requests if t in allowed_types]
+        except ValueError as exc:
+            return {"ok": False, "error": "invalid_room_config", "detail": str(exc)}
+
         client = registry.get_by_sid(request.sid)
         if client is None:
             return {
@@ -260,7 +278,7 @@ def register_socketio_events(
                 "error": "unknown_client",
             }
 
-        if sync_requests is not None and not service.may_persist(room):
+        if sync_requests is not None and not service.may_persist(room) and not auto_sync:
             return {"ok": False, "error": "room_not_persistent"}
 
         join_room(room)
@@ -330,8 +348,8 @@ def register_socketio_events(
                     room=request.sid,
                 )
 
-        elif sync_requests is not None:
-            # A room without server persistence must not report success.
+        elif sync_requests is not None and not auto_sync:
+            # Legacy explicit sync requires persistence.
             return {"ok": False, "error": "room_not_persistent"}
         elif last_event_id is not None:
             emit(
@@ -345,7 +363,7 @@ def register_socketio_events(
                 room=room,
             )
 
-        return {"ok": True}
+        return {"ok": True, "roomConfig": client_config}
 
     @socketio.on("deliver_new_events")
     def handle_deliver_new_events(
@@ -520,6 +538,15 @@ def register_socketio_events(
                 "ok": False,
                 "error": "type_required",
             }
+
+        # Only built-in chat/images and explicitly enabled additional
+        # object types may be sent by clients. System events are server-owned.
+        try:
+            allowed = {"chat", "image", *service.room_object_types(room)}
+        except ValueError:
+            return {"ok": False, "error": "invalid_room_config"}
+        if event_type not in allowed:
+            return {"ok": False, "error": "type_not_allowed"}
 
         operation = str(
             data.get("operation") or "upsert"

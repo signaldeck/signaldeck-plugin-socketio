@@ -28,11 +28,13 @@
         "ping_interval": 25,
         "ping_timeout": 20,
         "max_http_buffer_size": 1000000,
+        "object_types": {"appointment": {"sync_days": null}},
         "rooms": [
           {
             "name": "family",
             "display_name": "Familie",
-            "persist": true
+            "persist": true,
+            "object_types": ["appointment"]
           },
           {
             "name": "privat",

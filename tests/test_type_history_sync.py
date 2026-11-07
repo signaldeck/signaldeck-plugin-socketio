@@ -35,7 +35,7 @@ def server(monkeypatch):
     app.config["SECRET_KEY"] = "test-key"
     socketio = SocketIO(app, async_mode="threading")
     service = SocketIOService()
-    service.configure({"rooms": [{"name": "family", "persist": True}, {"name": "temp", "persist": False}]})
+    service.configure({"object_types": {"appointment": {"sync_days": None}}, "rooms": [{"name": "family", "persist": True, "object_types": ["appointment"]}, {"name": "temp", "persist": False}]})
     socket_events.register_socketio_events(socketio, service)
     yield socketio, app, service
     monkeypatch.setattr(socket_events, "_registered", False)
