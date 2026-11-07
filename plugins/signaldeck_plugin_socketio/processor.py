@@ -116,6 +116,7 @@ class SocketIOProcessor(PersistData, DisplayProcessor):
 
         service.bind_event_recorder(self, self.record_event)
         service.bind_history_provider(self, self.get_missed_events)
+        service.bind_history_page_provider(self, self.get_history_page)
 
     @staticmethod
     def _normalize_persist_config(config: dict) -> dict:
@@ -797,6 +798,36 @@ class SocketIOProcessor(PersistData, DisplayProcessor):
             self._event_to_wire(event)
             for event in events
         ]
+
+    def get_history_page(
+        self,
+        *,
+        room: str,
+        event_type: str,
+        days: int | None,
+        limit: int = 100,
+        cursor: str | None = None,
+    ):
+        """Fetch one page for a generic type, without relying on the 7-day RAM cache.
+
+        Dates refer to persistence times (not client-controlled createdAt).
+        The existing get_missed_events contract is intentionally unchanged.
+        """
+        if not service.may_persist(room):
+            raise ValueError("Room has no persistent history")
+        start = self._now() - timedelta(days=days) if days is not None else None
+        page = self.get_records_page(
+            fields=HISTORY_FIELDS,
+            filters={"room": room, "type": event_type},
+            date_from=start,
+            limit=limit,
+            cursor=cursor,
+            order="asc",
+        )
+        return (
+            [self._event_to_wire(event) for event in self._records_from_dataframe(page.records)],
+            page.next_cursor,
+        )
 
     def _event_to_wire(
         self,
