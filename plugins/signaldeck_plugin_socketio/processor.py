@@ -27,6 +27,7 @@ DEFAULT_OPERATION = "upsert"
 EVENT_PERSIST_FIELDS = [
     {"name": "date", "dtype": "datetime", "display_name": "Received At"},
     {"name": "createdAt", "dtype": "datetime", "display_name": "Created At"},
+    {"name": "receivedAt", "dtype": "datetime", "display_name": "Event Received At"},
     {"name": "room", "dtype": "str", "display_name": "Room"},
     {"name": "transmitter", "dtype": "str", "display_name": "Transmitter"},
     {
@@ -46,6 +47,7 @@ EVENT_PERSIST_FIELDS = [
 
 HISTORY_FIELDS = [
     "createdAt",
+    "receivedAt",
     "room",
     "transmitter",
     "transmitterName",
@@ -95,6 +97,8 @@ class SocketIOProcessor(PersistData, DisplayProcessor):
         config = self._normalize_persist_config(config)
         super().__init__(name, config, ctx, valueProvider, collect_data)
 
+        self._timestamp_lock = RLock()
+        self._last_persist_timestamp_ms: int | None = None
         self._persist_lock = RLock()
         self._persist_condition = Condition()
         self._pending_persist_callbacks = 0
@@ -535,11 +539,17 @@ class SocketIOProcessor(PersistData, DisplayProcessor):
         records = []
 
         for index, row in dataframe.iterrows():
-            received_at = row.get("date", index)
+            persist_date = row.get("date", index)
+            if hasattr(persist_date, "to_pydatetime"):
+                persist_date = persist_date.to_pydatetime()
+            if not isinstance(persist_date, datetime):
+                continue
+            received_at = row.get("receivedAt")
             if hasattr(received_at, "to_pydatetime"):
                 received_at = received_at.to_pydatetime()
-            if not isinstance(received_at, datetime):
-                continue
+            if not isinstance(received_at, datetime) or self._missing(received_at):
+                # Historical records predate the separate receivedAt field.
+                received_at = persist_date
 
             created_at = row.get("createdAt")
             if hasattr(created_at, "to_pydatetime"):
@@ -615,7 +625,7 @@ class SocketIOProcessor(PersistData, DisplayProcessor):
                     default=1,
                 ),
                 "payload": payload,
-                "date": received_at,
+                "date": persist_date,
             }
 
             key_id = row.get("key_id")
@@ -678,6 +688,30 @@ class SocketIOProcessor(PersistData, DisplayProcessor):
         else:
             self._save_event(data)
 
+    def _next_persist_timestamp_ms(self) -> int:
+        """Reserve a unique millisecond DB key without changing wire timestamps.
+
+        The SQLiteStore has a UNIQUE(processor_id, ts) constraint. Reserve
+        timestamps before queueing writes, including concurrent Socket.IO
+        callbacks. Seed the counter from the latest persisted row on restart.
+        """
+        with self._timestamp_lock:
+            if self._last_persist_timestamp_ms is None:
+                page = self.get_records_page(
+                    fields=["id"], limit=1, order="desc",
+                )
+                if page.records.empty:
+                    self._last_persist_timestamp_ms = 0
+                else:
+                    self._last_persist_timestamp_ms = int(
+                        page.records.index[-1].timestamp() * 1000
+                    )
+
+            now_ms = int(time.time() * 1000)
+            next_ms = max(now_ms, self._last_persist_timestamp_ms + 1)
+            self._last_persist_timestamp_ms = next_ms
+            return next_ms
+
     def _event_to_persist_data(
         self,
         event: Mapping[str, Any],
@@ -685,8 +719,12 @@ class SocketIOProcessor(PersistData, DisplayProcessor):
         data = {
             # PersistData/SqliteStore use the conventional technical `date`
             # field as the record timestamp. Semantically this is receivedAt.
-            "date": event["receivedAt"],
+            "date": datetime.fromtimestamp(
+                self._next_persist_timestamp_ms() / 1000,
+                tz=self._timezone(),
+            ),
             "createdAt": event["createdAt"],
+            "receivedAt": event["receivedAt"],
             "room": str(event["room"]),
             "transmitter": str(event["transmitter"]),
             "transmitterName": str(event["transmitterName"]),
