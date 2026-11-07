@@ -50,6 +50,7 @@ class SocketIOService:
         "blob_store_path": "data/socketio-blobs",
         "max_blob_size_bytes": 50 * 1024 * 1024,
         "incoming_message_routes": [],
+        "object_types": {},
     }
 
     def __init__(self) -> None:
@@ -80,6 +81,25 @@ class SocketIOService:
         config = config or {}
         incoming_routes = config.get("incoming_message_routes", [])
         router = IncomingMessageRouter(incoming_routes)
+        types = config.get("object_types", {})
+        if not isinstance(types, dict):
+            raise ValueError("object_types must be a mapping")
+        for type_name, definition in types.items():
+            if (
+                not isinstance(type_name, str) or not type_name
+                or type_name in {"chat", "image", "system"}
+                or not isinstance(definition, dict)
+            ):
+                raise ValueError("Invalid object type configuration")
+            days = definition.get("sync_days")
+            if days is not None and (type(days) is not int or not 1 <= days <= 36500):
+                raise ValueError("Invalid object type sync_days")
+        for item in config.get("rooms", []):
+            enabled = item.get("object_types", []) if isinstance(item, dict) else []
+            if not isinstance(enabled, list) or any(
+                not isinstance(t, str) or t not in types for t in enabled
+            ):
+                raise ValueError("Room references undefined object types")
 
         with self._config_lock:
             for key in self.DEFAULT_CONFIG:
@@ -210,6 +230,46 @@ class SocketIOService:
             self.room_overview(room)
             for room in self.all_room_names()
         ]
+
+    def configured_object_types(self) -> dict[str, dict]:
+        """Definitions for additional object types, excluding built-in chat/image."""
+        raw = self.config.get("object_types", {})
+        if not isinstance(raw, dict):
+            raise ValueError("object_types must be a mapping")
+        result = {}
+        for name, definition in raw.items():
+            if not isinstance(name, str) or not name or name in {"chat", "image", "system"}:
+                raise ValueError("Invalid additional object type")
+            if not isinstance(definition, dict):
+                raise ValueError("Object type configuration must be an object")
+            days = definition.get("sync_days")
+            if days is not None and (type(days) is not int or not 1 <= days <= 36500):
+                raise ValueError("sync_days must be a positive integer or null")
+            result[name] = {"sync_days": days}
+        return result
+
+    def room_object_types(self, room: str) -> list[str]:
+        configured = self.room_settings(room)
+        raw = configured.options.get("object_types", [])
+        if not isinstance(raw, list):
+            raise ValueError("room object_types must be a list")
+        definitions = self.configured_object_types()
+        if any(not isinstance(t, str) or t not in definitions for t in raw):
+            raise ValueError(f"Room {room!r} enables an undefined object type")
+        return list(dict.fromkeys(raw))
+
+    def room_client_config(self, room: str) -> dict:
+        """Only public display metadata: do not expose server bus sources."""
+        types = self.configured_object_types()
+        enabled = self.room_object_types(room)
+        ai_prefixes = []
+        for rooms, prefix, _ in self.incoming_router.routes:
+            if room in rooms:
+                ai_prefixes.append(prefix)
+        return {
+            "objectTypes": {t: types[t] for t in enabled},
+            "aiPrefixes": sorted(set(ai_prefixes)),
+        }
 
     def may_persist(self, room: str) -> bool:
         return self.room_settings(room).persist
