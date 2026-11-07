@@ -31,10 +31,12 @@ def test_socketio_send_command_sends_message_to_room():
 
     assert len(socketio.calls) == 1
     event, payload, kwargs = socketio.calls[0]
-    assert event == "message"
+    assert event == "event"
     assert kwargs == {"room": "family"}
     assert payload["room"] == "family"
-    assert payload["content"] == "Hello from script"
+    assert payload["payload"] == {"text": "Hello from script", "contentType": "text", "system": False}
+    assert payload["type"] == "chat"
+    assert payload["operation"] == "upsert"
     assert payload["transmitter"] == "signaldeck"
     assert payload["transmitterName"] == "SignalDeck"
 

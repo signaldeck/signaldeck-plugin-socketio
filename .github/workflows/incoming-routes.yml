@@ -11,8 +11,14 @@ jobs:
         with:
           python-version: '3.13'
       - run: python -m pip install --upgrade pip
-      - run: python -m pip install "git+https://github.com/signaldeck/signaldeck-sdk.git@main"
+      - name: Install SDK (feature branch when available, otherwise main)
+        run: |
+          REF=main
+          if git ls-remote --exit-code --heads https://github.com/signaldeck/signaldeck-sdk.git feat/filtered-record-query-20261107 > /dev/null; then
+            REF=feat/filtered-record-query-20261107
+          fi
+          python -m pip install "git+https://github.com/signaldeck/signaldeck-sdk.git@${REF}"
       - run: python -m pip install "flask>=3.0" "flask-socketio>=5.5,<6" "simple-websocket>=1.1,<2" pytest build
       - run: python -m pip install -e . --no-deps
-      - run: python -m pytest -q tests/test_incoming_routes.py
+      - run: python -m pytest -q
       - run: python -m build --wheel --outdir dist
