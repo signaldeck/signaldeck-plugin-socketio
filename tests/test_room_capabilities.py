@@ -48,6 +48,17 @@ def test_join_ack_contains_public_capabilities(setup_server):
     assert ack["roomConfig"]["displayName"] == "haus"
     client.disconnect()
 
+def test_display_name_lookup_also_covers_unsubscribed_rooms(setup_server):
+    socketio, app, _ = setup_server
+    client = socketio.test_client(app, auth={"id": "user"})
+    ack = client.emit("get_room_display_names", callback=True)
+    assert ack == {
+        "ok": True,
+        "rooms": {"family": "Familie", "haus": "haus"},
+    }
+    client.disconnect()
+
+
 def test_auto_sync_only_configured_types(setup_server):
     socketio, app, service = setup_server
     calls = []
