@@ -29,13 +29,13 @@ def setup_server(monkeypatch):
 def test_capabilities_are_room_scoped(setup_server):
     _, _, service = setup_server
     assert service.room_client_config("family") == {
-        "objectTypes": {"appointment": {"sync_days": None}}, "aiPrefixes": [], "displayName": "Familie"
+        "objectTypes": {"appointment": {"sync_days": None}}, "aiPrefixes": [], "displayName": "Familie", "persistent": True
     }
     assert service.room_client_config("haus") == {
-        "objectTypes": {}, "aiPrefixes": ["@haus"], "displayName": "haus"
+        "objectTypes": {}, "aiPrefixes": ["@haus"], "displayName": "haus", "persistent": False
     }
     assert service.room_client_config("unknown") == {
-        "objectTypes": {}, "aiPrefixes": [], "displayName": "unknown"
+        "objectTypes": {}, "aiPrefixes": [], "displayName": "unknown", "persistent": False
     }
 
 def test_join_ack_contains_public_capabilities(setup_server):
@@ -46,6 +46,7 @@ def test_join_ack_contains_public_capabilities(setup_server):
     assert ack["roomConfig"]["objectTypes"] == {}
     assert ack["roomConfig"]["aiPrefixes"] == ["@haus"]
     assert ack["roomConfig"]["displayName"] == "haus"
+    assert ack["roomConfig"]["persistent"] is False
     client.disconnect()
 
 def test_display_name_lookup_also_covers_unsubscribed_rooms(setup_server):
