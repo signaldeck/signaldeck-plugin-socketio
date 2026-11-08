@@ -219,6 +219,21 @@ def register_socketio_events(
     # Room subscriptions / history
     # ------------------------------------------------------------------
 
+    @socketio.on("get_room_display_names")
+    def handle_get_room_display_names():
+        # Metadata only: configured room labels, no membership, history or
+        # private message contents. A connected authenticated client can
+        # already join any configured room in the current room model.
+        if registry.get_by_sid(request.sid) is None:
+            return {"ok": False, "error": "unknown_client"}
+        return {
+            "ok": True,
+            "rooms": {
+                item.name: item.display_name
+                for item in service.configured_rooms()
+            },
+        }
+
     @socketio.on("join_room")
     def handle_join_room(data):
         data = _as_dict(data)
