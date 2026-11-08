@@ -270,6 +270,7 @@ class SocketIOService:
             "objectTypes": {t: types[t] for t in enabled},
             "aiPrefixes": sorted(set(ai_prefixes)),
             "displayName": self.room_settings(room).display_name,
+            "persistent": self.may_persist(room),
         }
 
     def may_persist(self, room: str) -> bool:
