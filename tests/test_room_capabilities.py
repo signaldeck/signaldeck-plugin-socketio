@@ -12,7 +12,7 @@ def setup_server(monkeypatch):
     service.configure({
         "object_types": {"appointment": {"sync_days": None}},
         "rooms": [
-            {"name": "family", "persist": True, "object_types": ["appointment"]},
+            {"name": "family", "display_name": "Familie", "persist": True, "object_types": ["appointment"]},
             {"name": "haus", "persist": False},
         ],
         "incoming_message_routes": [
@@ -29,13 +29,13 @@ def setup_server(monkeypatch):
 def test_capabilities_are_room_scoped(setup_server):
     _, _, service = setup_server
     assert service.room_client_config("family") == {
-        "objectTypes": {"appointment": {"sync_days": None}}, "aiPrefixes": []
+        "objectTypes": {"appointment": {"sync_days": None}}, "aiPrefixes": [], "displayName": "Familie"
     }
     assert service.room_client_config("haus") == {
-        "objectTypes": {}, "aiPrefixes": ["@haus"]
+        "objectTypes": {}, "aiPrefixes": ["@haus"], "displayName": "haus"
     }
     assert service.room_client_config("unknown") == {
-        "objectTypes": {}, "aiPrefixes": []
+        "objectTypes": {}, "aiPrefixes": [], "displayName": "unknown"
     }
 
 def test_join_ack_contains_public_capabilities(setup_server):
@@ -45,6 +45,7 @@ def test_join_ack_contains_public_capabilities(setup_server):
     assert ack["ok"] is True
     assert ack["roomConfig"]["objectTypes"] == {}
     assert ack["roomConfig"]["aiPrefixes"] == ["@haus"]
+    assert ack["roomConfig"]["displayName"] == "haus"
     client.disconnect()
 
 def test_auto_sync_only_configured_types(setup_server):
